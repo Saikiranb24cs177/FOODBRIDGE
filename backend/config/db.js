@@ -1,9 +1,13 @@
 
+const mongoose = require('mongoose');
+
 const connectDB = async () => {
   const uri = process.env.MONGODB_URI;
 
   if (!uri) {
-    throw new Error('MONGODB_URI is missing from Render Environment Variables!');
+    throw new Error(
+      'MONGODB_URI is missing from Render Environment Variables!'
+    );
   }
 
   console.log('[DB] Connecting to MongoDB Atlas...');
@@ -14,10 +18,25 @@ const connectDB = async () => {
       connectTimeoutMS: 10000,
     });
 
-    console.log('[DB] Connected successfully:', conn.connection.host);
+    console.log(
+      '[DB] Connected successfully:',
+      conn.connection.host
+    );
+
     return conn;
   } catch (err) {
     console.error('[DB ERROR]', err.message);
     throw err;
   }
 };
+
+const disconnectDB = async () => {
+  try {
+    await mongoose.disconnect();
+    console.log('[DB] Disconnected from MongoDB');
+  } catch (err) {
+    console.error('[DB] Error disconnecting:', err.message);
+  }
+};
+
+module.exports = { connectDB, disconnectDB };
