@@ -141,7 +141,9 @@ const LoginPage = () => {
                 <label className="block text-xs font-bold text-slate-700">
                   Password
                 </label>
-                <span className="text-[11px] text-slate-400">Default: Password123!</span>
+                <Link to="/forgot-password" className="text-[11px] text-brand-600 hover:underline font-semibold">
+                  Forgot password?
+                </Link>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />

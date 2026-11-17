@@ -1,13 +1,33 @@
 import api from './api';
 
 export const adminService = {
+  getDashboardMetrics: async () => {
+    const response = await api.get('/admin/dashboard');
+    return response.data;
+  },
+
   getUsers: async (params = {}) => {
     const response = await api.get('/admin/users', { params });
     return response.data;
   },
 
+  verifyUser: async (userId, verificationData) => {
+    const response = await api.put(`/admin/users/${userId}/verify`, verificationData);
+    return response.data;
+  },
+
   updateUserStatus: async (userId, updates) => {
-    const response = await api.put(`/admin/users/${userId}`, updates);
+    const response = await api.put(`/admin/users/${userId}/status`, updates);
+    return response.data;
+  },
+
+  getAllDonations: async (params = {}) => {
+    const response = await api.get('/admin/donations', { params });
+    return response.data;
+  },
+
+  getAllRequests: async (params = {}) => {
+    const response = await api.get('/admin/requests', { params });
     return response.data;
   },
 

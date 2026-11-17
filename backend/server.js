@@ -8,8 +8,11 @@ const { connectDB } = require('./config/db');
 const { notFound, errorHandler } = require('./middleware/errorMiddleware');
 
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/userRoutes');
 const donationRoutes = require('./routes/donationRoutes');
 const requestRoutes = require('./routes/requestRoutes');
+const aiRoutes = require('./routes/aiRoutes');
+const notificationRoutes = require('./routes/notificationRoutes');
 const adminRoutes = require('./routes/adminRoutes');
 const statsRoutes = require('./routes/statsRoutes');
 const uploadRoutes = require('./routes/uploadRoutes');
@@ -36,14 +39,18 @@ app.get('/api/health', (req, res) => {
   res.status(200).json({
     status: 'healthy',
     platform: 'FoodBridge API',
+    database: 'MongoDB Connected',
     timestamp: new Date(),
   });
 });
 
 // Mount Routes
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
 app.use('/api/donations', donationRoutes);
 app.use('/api/requests', requestRoutes);
+app.use('/api/ai', aiRoutes);
+app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/stats', statsRoutes);
 app.use('/api/upload', uploadRoutes);
@@ -54,15 +61,15 @@ app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to DB and listen
+// Connect to MongoDB and listen
 const startServer = async () => {
   try {
     await connectDB();
     app.listen(PORT, () => {
-      console.log(`[FoodBridge] Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+      console.log(`[FoodBridge] Server running on port ${PORT}`);
     });
   } catch (error) {
-    console.error(`[FoodBridge] Server startup failed:`, error.message);
+    console.error(`[FoodBridge] Server startup aborted:`, error.message);
     process.exit(1);
   }
 };

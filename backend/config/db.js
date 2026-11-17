@@ -1,34 +1,37 @@
 const mongoose = require('mongoose');
-const memoryStore = require('./memoryStore');
 
 const connectDB = async () => {
   const uri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/foodbridge';
 
+  console.log(`[DB] Connecting to MongoDB at ${uri}...`);
+
   try {
-    console.log(`[DB] Attempting connection to MongoDB: ${uri}...`);
-    // Connect with a short timeout so we quickly fall back if local mongod is not running
-    await mongoose.connect(uri, {
-      serverSelectionTimeoutMS: 2000,
-      connectTimeoutMS: 2000,
+    const conn = await mongoose.connect(uri, {
+      serverSelectionTimeoutMS: 5000,
+      connectTimeoutMS: 5000,
     });
-    global.isUsingMemoryStore = false;
-    console.log(`[DB] Connected successfully to MongoDB at ${mongoose.connection.host}`);
+
+    console.log(`[DB] Connected successfully to MongoDB host: ${conn.connection.host}, database: ${conn.connection.name}`);
+    return conn;
   } catch (err) {
-    console.warn(`[DB] Primary MongoDB is unavailable (${err.message}).`);
-    console.log('[DB] Activating built-in FoodBridge In-Memory Data Engine...');
-    global.isUsingMemoryStore = true;
-    await memoryStore.seed();
-    console.log('[DB] In-Memory Engine active. All models, routes, auth, and stateful mutations are 100% operational!');
+    console.error(`\n======================================================`);
+    console.error(`[DB ERROR] Failed to connect to MongoDB!`);
+    console.error(`URI: ${uri}`);
+    console.error(`Reason: ${err.message}`);
+    console.error(`Please ensure MongoDB is running:`);
+    console.error(`  - Local: start MongoDB Community Server via "mongod --dbpath <path>"`);
+    console.error(`  - Cloud: set MONGODB_URI=mongodb+srv://... in backend/.env`);
+    console.error(`======================================================\n`);
+    throw err;
   }
 };
 
 const disconnectDB = async () => {
   try {
-    if (!global.isUsingMemoryStore) {
-      await mongoose.disconnect();
-    }
+    await mongoose.disconnect();
+    console.log('[DB] Disconnected from MongoDB');
   } catch (e) {
-    console.error('Error disconnecting DB:', e);
+    console.error('[DB] Error disconnecting DB:', e);
   }
 };
 

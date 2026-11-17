@@ -3,7 +3,6 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   UtensilsCrossed,
   HeartHandshake,
-  ShieldCheck,
   Building2,
   Mail,
   Lock,
@@ -12,6 +11,9 @@ import {
   AlertCircle,
   ArrowRight,
   User,
+  FileText,
+  ShieldCheck,
+  CheckCircle2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../context/ToastContext';
@@ -21,17 +23,24 @@ const RegisterPage = () => {
   const { showToast } = useToast();
   const navigate = useNavigate();
 
-  const [role, setRole] = useState('donor'); // 'donor' | 'ngo' | 'admin'
+  const [role, setRole] = useState('donor'); // 'donor' | 'ngo' (Admin cannot be publicly self-registered)
   const [formData, setFormData] = useState({
     name: '',
     email: '',
     password: '',
+    confirmPassword: '',
     phone: '',
     organizationName: '',
     organizationType: 'Hotel',
     address: '',
     city: 'Bengaluru',
+    state: 'Karnataka',
+    pinCode: '560001',
+    // NGO verification fields
+    registrationNumber: '',
+    darpanId: '',
   });
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -43,7 +52,7 @@ const RegisterPage = () => {
     setRole(newRole);
     setFormData((prev) => ({
       ...prev,
-      organizationType: newRole === 'donor' ? 'Hotel' : newRole === 'ngo' ? 'Orphanage' : 'Charitable Trust',
+      organizationType: newRole === 'donor' ? 'Hotel' : 'NGO',
     }));
   };
 
@@ -68,6 +77,11 @@ const RegisterPage = () => {
       return;
     }
 
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
     try {
       setIsLoading(true);
       const res = await register({
@@ -79,7 +93,6 @@ const RegisterPage = () => {
 
       if (role === 'donor') navigate('/donor/dashboard', { replace: true });
       else if (role === 'ngo') navigate('/ngo/dashboard', { replace: true });
-      else if (role === 'admin') navigate('/admin/dashboard', { replace: true });
       else navigate('/', { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || err.message || 'Registration failed');
@@ -100,16 +113,16 @@ const RegisterPage = () => {
             Create your FoodBridge Account
           </h2>
           <p className="text-xs sm:text-sm text-slate-500">
-            Choose your organization type to join our surplus food rescue mission
+            Join the zero-waste surplus food distribution network
           </p>
         </div>
 
-        {/* Role Selection Tabs */}
-        <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-200/70 rounded-2xl">
+        {/* Role Selection Tabs (Only Donor & NGO allowed for public signups) */}
+        <div className="grid grid-cols-2 gap-3 p-1.5 bg-slate-200/70 rounded-2xl">
           <button
             type="button"
             onClick={() => handleRoleChange('donor')}
-            className={`py-3 px-3 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 ${
+            className={`py-3 px-4 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${
               role === 'donor'
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
@@ -122,27 +135,14 @@ const RegisterPage = () => {
           <button
             type="button"
             onClick={() => handleRoleChange('ngo')}
-            className={`py-3 px-3 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 ${
+            className={`py-3 px-4 rounded-xl font-bold text-sm transition flex items-center justify-center gap-2 ${
               role === 'ngo'
                 ? 'bg-white text-slate-900 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
             <HeartHandshake className="w-4 h-4 text-warmth-600" />
-            <span>NGO / Shelter</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleRoleChange('admin')}
-            className={`py-3 px-3 rounded-xl font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5 ${
-              role === 'admin'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <ShieldCheck className="w-4 h-4 text-amber-600" />
-            <span>Administrator</span>
+            <span>NGO / Charity / Shelter</span>
           </button>
         </div>
 
@@ -186,7 +186,7 @@ const RegisterPage = () => {
                     name="email"
                     value={formData.email}
                     onChange={handleChange}
-                    placeholder="e.g. contact@hotel.com"
+                    placeholder="e.g. contact@domain.com"
                     className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
                     required
                   />
@@ -197,7 +197,7 @@ const RegisterPage = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Password (min 6 characters) *
+                  Password (min 6 chars) *
                 </label>
                 <div className="relative">
                   <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
@@ -215,6 +215,81 @@ const RegisterPage = () => {
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Confirm Password *
+                </label>
+                <div className="relative">
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                  <input
+                    type="password"
+                    name="confirmPassword"
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    placeholder="••••••••"
+                    className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Organization / Kitchen Name *
+                </label>
+                <div className="relative">
+                  <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                  <input
+                    type="text"
+                    name="organizationName"
+                    value={formData.organizationName}
+                    onChange={handleChange}
+                    placeholder={role === 'donor' ? 'e.g. Grand Royal Hotel' : 'e.g. Hope Orphanage Trust'}
+                    className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Organization Type *
+                </label>
+                <select
+                  name="organizationType"
+                  value={formData.organizationType}
+                  onChange={handleChange}
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
+                >
+                  {role === 'donor' ? (
+                    <>
+                      <option value="Hotel">Hotel</option>
+                      <option value="Restaurant">Restaurant</option>
+                      <option value="Hostel">Hostel</option>
+                      <option value="Function Hall">Function Hall / Banquet</option>
+                      <option value="Catering Service">Catering Service</option>
+                      <option value="Corporate Cafeteria">Corporate Cafeteria</option>
+                      <option value="Supermarket">Supermarket</option>
+                      <option value="Individual">Individual Donor</option>
+                      <option value="Other">Other</option>
+                    </>
+                  ) : (
+                    <>
+                      <option value="NGO">NGO (General Food Relief)</option>
+                      <option value="Orphanage">Orphanage</option>
+                      <option value="Old-Age Home">Old-Age Home</option>
+                      <option value="Community Shelter">Community Shelter</option>
+                      <option value="Charitable Trust">Charitable Trust</option>
+                      <option value="Other">Other Charity</option>
+                    </>
+                  )}
+                </select>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
                   Contact Phone Number *
                 </label>
                 <div className="relative">
@@ -230,120 +305,133 @@ const RegisterPage = () => {
                   />
                 </div>
               </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Organization / Entity Name *
-                </label>
-                <div className="relative">
-                  <Building2 className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                  <input
-                    type="text"
-                    name="organizationName"
-                    value={formData.organizationName}
-                    onChange={handleChange}
-                    placeholder={
-                      role === 'donor'
-                        ? 'e.g. Grand Royal Hotel'
-                        : 'e.g. Hope Shelter & Care'
-                    }
-                    className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Organization Type
-                </label>
-                <select
-                  name="organizationType"
-                  value={formData.organizationType}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium bg-white"
-                >
-                  {role === 'donor' ? (
-                    <>
-                      <option value="Hotel">Hotel</option>
-                      <option value="Restaurant">Restaurant</option>
-                      <option value="Hostel">Hostel</option>
-                      <option value="Function Hall">Function Hall / Convention</option>
-                      <option value="Catering Service">Catering Service</option>
-                      <option value="Corporate Cafeteria">Corporate Cafeteria</option>
-                      <option value="Supermarket">Supermarket</option>
-                      <option value="Individual">Individual Donor</option>
-                    </>
-                  ) : role === 'ngo' ? (
-                    <>
-                      <option value="Orphanage">Orphanage</option>
-                      <option value="Old-Age Home">Old-Age Home</option>
-                      <option value="Community Shelter">Community Shelter</option>
-                      <option value="NGO">Relief NGO</option>
-                      <option value="Charitable Trust">Charitable Trust</option>
-                    </>
-                  ) : (
-                    <>
-                      <option value="Charitable Trust">Platform Admin / HQ</option>
-                    </>
-                  )}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Address / Operational Location *
-                </label>
-                <div className="relative">
-                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
-                  <input
-                    type="text"
-                    name="address"
-                    value={formData.address}
-                    onChange={handleChange}
-                    placeholder="e.g. 42 MG Road, Ashok Nagar"
-                    className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
-                    required
-                  />
-                </div>
-              </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   City *
                 </label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-3.5" />
+                  <input
+                    type="text"
+                    name="city"
+                    value={formData.city}
+                    onChange={handleChange}
+                    placeholder="e.g. Bengaluru, Hyderabad"
+                    className="w-full pl-9 pr-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">State</label>
                 <input
                   type="text"
-                  name="city"
-                  value={formData.city}
+                  name="state"
+                  value={formData.state}
                   onChange={handleChange}
-                  placeholder="e.g. Bengaluru"
+                  placeholder="e.g. Karnataka"
+                  className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">PIN Code *</label>
+                <input
+                  type="text"
+                  name="pinCode"
+                  value={formData.pinCode}
+                  onChange={handleChange}
+                  placeholder="e.g. 560001"
                   className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium"
                   required
                 />
               </div>
             </div>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-3.5 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-              >
-                <span>{isLoading ? 'Creating Account...' : 'Complete Registration'}</span>
-                <ArrowRight className="w-4 h-4" />
-              </button>
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Street Address / Venue Location *
+              </label>
+              <textarea
+                name="address"
+                value={formData.address}
+                onChange={handleChange}
+                rows={2}
+                placeholder="Complete pickup or distribution center address..."
+                className="w-full px-3 py-2.5 text-sm rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-brand-500 font-medium resize-none"
+                required
+              />
             </div>
+
+            {/* NGO Verification Details Section */}
+            {role === 'ngo' && (
+              <div className="p-4 rounded-2xl bg-amber-50/80 border border-amber-200/80 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-amber-700" />
+                  <span className="text-xs font-extrabold text-amber-900 uppercase tracking-wider">
+                    NGO Verification Details
+                  </span>
+                </div>
+                <p className="text-xs text-amber-800">
+                  To maintain food safety and child welfare compliance, charitable organizations submit registration identifiers for administrative verification.
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Registration Certificate / Trust No.
+                    </label>
+                    <input
+                      type="text"
+                      name="registrationNumber"
+                      value={formData.registrationNumber}
+                      onChange={handleChange}
+                      placeholder="e.g. KA/TRUST/2021/4910"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      NITI Aayog DARPAN ID
+                    </label>
+                    <input
+                      type="text"
+                      name="darpanId"
+                      value={formData.darpanId}
+                      onChange={handleChange}
+                      placeholder="e.g. KA/2021/041120"
+                      className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 bg-white"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-3 px-4 rounded-xl bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white font-bold text-sm shadow-lg shadow-brand-600/20 hover:shadow-brand-600/30 transition flex items-center justify-center gap-2 group mt-2"
+            >
+              {isLoading ? (
+                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                <>
+                  <span>Complete Registration</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
+            </button>
           </form>
 
-          <div className="mt-6 pt-5 border-t border-slate-100 text-center text-xs text-slate-500">
+          <div className="mt-6 pt-4 border-t border-slate-100 text-center text-xs text-slate-500">
             Already have a FoodBridge account?{' '}
             <Link to="/login" className="font-bold text-brand-600 hover:underline">
-              Sign In
+              Log in here
             </Link>
           </div>
         </div>

@@ -20,15 +20,15 @@ const foodDonationSchema = new mongoose.Schema(
     category: {
       type: String,
       enum: [
-        'Cooked Meals',
-        'Raw Groceries',
-        'Bakery & Snacks',
-        'Packaged Food',
-        'Fruits & Vegetables',
-        'Beverages',
-        'Other'
+        'Cooked meals',
+        'Rice and grains',
+        'Vegetables',
+        'Fruits',
+        'Bakery items',
+        'Packaged food',
+        'Other',
       ],
-      default: 'Cooked Meals',
+      default: 'Cooked meals',
     },
     dietaryType: {
       type: String,
@@ -37,8 +37,13 @@ const foodDonationSchema = new mongoose.Schema(
     },
     quantity: {
       type: String,
-      required: [true, 'Please provide quantity (e.g., 20 kg, 30 containers)'],
+      required: [true, 'Please provide quantity'],
       trim: true,
+    },
+    quantityUnit: {
+      type: String,
+      enum: ['packets', 'meals', 'kg', 'servings'],
+      default: 'meals',
     },
     servings: {
       type: Number,
@@ -63,22 +68,43 @@ const foodDonationSchema = new mongoose.Schema(
       required: [true, 'Please specify pickup city'],
       trim: true,
     },
+    pinCode: {
+      type: String,
+      trim: true,
+      default: '560001',
+    },
+    location: {
+      type: {
+        type: String,
+        enum: ['Point'],
+        default: 'Point',
+      },
+      coordinates: {
+        type: [Number], // [lng, lat]
+        default: [77.5946, 12.9716],
+      },
+    },
+    pickupStartTime: {
+      type: String,
+      default: '12:00',
+    },
+    pickupEndTime: {
+      type: String,
+      default: '18:00',
+    },
     pickupWindow: {
-      from: {
-        type: String,
-        required: true,
-        default: '09:00',
-      },
-      to: {
-        type: String,
-        required: true,
-        default: '21:00',
-      },
+      from: { type: String, default: '12:00' },
+      to: { type: String, default: '18:00' },
     },
     contactPhone: {
       type: String,
       required: [true, 'Please provide a pickup contact number'],
       trim: true,
+    },
+    additionalInstructions: {
+      type: String,
+      trim: true,
+      default: '',
     },
     imageUrl: {
       type: String,
@@ -88,11 +114,11 @@ const foodDonationSchema = new mongoose.Schema(
       type: Boolean,
       required: [true, 'You must certify the safety and hygiene of the surplus food'],
       validate: {
-        validator: function(v) {
+        validator: function (v) {
           return v === true;
         },
-        message: 'Food safety declaration is mandatory to donate'
-      }
+        message: 'Food safety declaration is mandatory to donate',
+      },
     },
     storageInstruction: {
       type: String,
@@ -101,7 +127,17 @@ const foodDonationSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Available', 'Requested', 'Accepted', 'Picked Up', 'Delivered', 'Cancelled'],
+      enum: [
+        'Available',
+        'Draft',
+        'Requested',
+        'Accepted',
+        'Ready for Pickup',
+        'Picked Up',
+        'Delivered',
+        'Completed',
+        'Cancelled',
+      ],
       default: 'Available',
     },
     assignedNgo: {
@@ -121,14 +157,16 @@ const foodDonationSchema = new mongoose.Schema(
     reportReason: {
       type: String,
       default: '',
-    }
+    },
   },
   {
     timestamps: true,
   }
 );
 
-// Virtual for checking if expired
+foodDonationSchema.index({ location: '2dsphere' });
+foodDonationSchema.index({ status: 1, pickupCity: 1, expiryTime: 1 });
+
 foodDonationSchema.virtual('isExpired').get(function () {
   return new Date() > this.expiryTime;
 });

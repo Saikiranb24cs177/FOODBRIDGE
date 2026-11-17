@@ -1,84 +1,32 @@
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
-const memoryStore = require('../config/memoryStore');
 const User = require('../models/User');
 const FoodDonation = require('../models/FoodDonation');
 const DonationRequest = require('../models/DonationRequest');
 const TrackingLog = require('../models/TrackingLog');
+const Notification = require('../models/Notification');
 
-const isMemory = () => Boolean(global.isUsingMemoryStore);
+// ================= USER OPERATIONS =================
 
-// User operations
 const findUserByEmail = async (email, includePassword = false) => {
-  if (isMemory()) {
-    const user = memoryStore.users.find(
-      (u) => u.email.toLowerCase() === email.toLowerCase()
-    );
-    if (!user) return null;
-    return { ...user };
-  }
   const q = User.findOne({ email: email.toLowerCase() });
   if (includePassword) q.select('+password');
   return await q.exec();
 };
 
 const findUserById = async (id) => {
-  if (isMemory()) {
-    const user = memoryStore.users.find((u) => u._id === id || u.id === id);
-    if (!user) return null;
-    const { password, ...safeUser } = user;
-    return safeUser;
-  }
   return await User.findById(id).select('-password');
 };
 
 const createUser = async (userData) => {
-  if (isMemory()) {
-    const id = 'usr_' + memoryStore.generateId();
-    const newUser = {
-      _id: id,
-      id: id,
-      ...userData,
-      isVerified: true,
-      status: 'active',
-      createdAt: new Date(),
-    };
-    memoryStore.users.push(newUser);
-    const { password, ...safe } = newUser;
-    return safe;
-  }
   return await User.create(userData);
 };
 
 const updateUser = async (id, updates) => {
-  if (isMemory()) {
-    const idx = memoryStore.users.findIndex((u) => u._id === id || u.id === id);
-    if (idx === -1) return null;
-    memoryStore.users[idx] = { ...memoryStore.users[idx], ...updates, updatedAt: new Date() };
-    const { password, ...safe } = memoryStore.users[idx];
-    return safe;
-  }
   return await User.findByIdAndUpdate(id, updates, { new: true });
 };
 
 const getAllUsers = async ({ role, status, search }) => {
-  if (isMemory()) {
-    let list = [...memoryStore.users];
-    if (role && role !== 'all') list = list.filter((u) => u.role === role);
-    if (status && status !== 'all') list = list.filter((u) => u.status === status);
-    if (search && search.trim()) {
-      const q = search.toLowerCase();
-      list = list.filter(
-        (u) =>
-          u.name.toLowerCase().includes(q) ||
-          u.email.toLowerCase().includes(q) ||
-          (u.organizationName && u.organizationName.toLowerCase().includes(q)) ||
-          (u.city && u.city.toLowerCase().includes(q))
-      );
-    }
-    return list.map(({ password, ...u }) => u);
-  }
-
   const query = {};
   if (role && role !== 'all') query.role = role;
   if (status && status !== 'all') query.status = status;
@@ -89,147 +37,84 @@ const getAllUsers = async ({ role, status, search }) => {
   return await User.find(query).sort({ createdAt: -1 });
 };
 
-// Donation operations
-const getDonations = async ({ search, category, dietaryType, city, status = 'Available', sortBy = 'urgency' }) => {
-  if (isMemory()) {
-    let list = [...memoryStore.donations];
+// ================= DONATION OPERATIONS =================
 
-    if (status && status !== 'all') {
-      list = list.filter((d) => d.status === status);
-    }
+const getDonations = async ({
+  search,
+  category,
+  dietaryType,
+  city,
+  status = 'Available',
+  sortBy = 'urgency',
+}) => {
+  const query = {};
 
-    if (category && category !== 'All') {
-      list = list.filter((d) => d.category === category);
-    }
-
-    if (dietaryType && dietaryType !== 'All') {
-      list = list.filter((d) => d.dietaryType === dietaryType);
-    }
-
-    if (city && city.trim()) {
-      const c = city.toLowerCase();
-      list = list.filter((d) => d.pickupCity && d.pickupCity.toLowerCase().includes(c));
-    }
-
-    if (search && search.trim()) {
-      const s = search.toLowerCase();
-      list = list.filter(
-        (d) =>
-          d.foodName.toLowerCase().includes(s) ||
-          (d.description && d.description.toLowerCase().includes(s)) ||
-          d.pickupCity.toLowerCase().includes(s) ||
-          d.pickupAddress.toLowerCase().includes(s)
-      );
-    }
-
-    if (sortBy === 'urgency') {
-      list.sort((a, b) => new Date(a.expiryTime) - new Date(b.expiryTime));
-    } else if (sortBy === 'newest') {
-      list.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-    } else if (sortBy === 'servings') {
-      list.sort((a, b) => b.servings - a.servings);
-    }
-
-    return list;
+  if (status && status !== 'all') {
+    query.status = status;
   }
 
-  const query = {};
-  if (status && status !== 'all') query.status = status;
-  if (category && category !== 'All') query.category = category;
-  if (dietaryType && dietaryType !== 'All') query.dietaryType = dietaryType;
-  if (city && city.trim()) query.pickupCity = { $regex: city.trim(), $options: 'i' };
+  if (category && category !== 'All') {
+    query.category = { $regex: new RegExp(`^${category}$`, 'i') };
+  }
+
+  if (dietaryType && dietaryType !== 'All') {
+    query.dietaryType = dietaryType;
+  }
+
+  if (city && city.trim()) {
+    query.pickupCity = { $regex: city.trim(), $options: 'i' };
+  }
+
   if (search && search.trim()) {
     const regex = { $regex: search.trim(), $options: 'i' };
     query.$or = [{ foodName: regex }, { description: regex }, { pickupAddress: regex }, { pickupCity: regex }];
   }
 
-  let sort = { createdAt: -1 };
-  if (sortBy === 'urgency') sort = { expiryTime: 1 };
-  if (sortBy === 'servings') sort = { servings: -1 };
+  let sortOption = { expiryTime: 1 }; // Default urgency
+  if (sortBy === 'newest') sortOption = { createdAt: -1 };
+  if (sortBy === 'servings') sortOption = { servings: -1 };
 
   return await FoodDonation.find(query)
-    .populate('donor', 'name organizationName organizationType phone city')
-    .populate('assignedNgo', 'name organizationName phone')
-    .sort(sort);
+    .populate('donor', 'name organizationName phone email address city isVerified verificationStatus')
+    .sort(sortOption);
 };
 
 const getDonationById = async (id) => {
-  if (isMemory()) {
-    const donation = memoryStore.donations.find((d) => d._id === id || d.id === id);
-    if (!donation) return null;
-    const trackingLogs = memoryStore.logs
-      .filter((l) => l.donation === id || (l.donation && (l.donation._id === id || l.donation.id === id)))
-      .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const requests = memoryStore.requests.filter(
-      (r) => (r.donation && (r.donation._id === id || r.donation.id === id)) || r.donation === id
-    );
-    return { donation, trackingLogs, requests };
-  }
+  if (!mongoose.Types.ObjectId.isValid(id)) return null;
 
   const donation = await FoodDonation.findById(id)
-    .populate('donor', 'name organizationName organizationType phone email city address')
-    .populate('assignedNgo', 'name organizationName organizationType phone email')
+    .populate('donor', 'name organizationName phone email address city isVerified verificationStatus')
+    .populate('assignedNgo', 'name organizationName phone email address city')
     .populate('acceptedRequest');
+
   if (!donation) return null;
 
   const trackingLogs = await TrackingLog.find({ donation: donation._id })
-    .populate('updatedBy', 'name organizationName role')
+    .populate('updatedBy', 'name role organizationName')
     .sort({ timestamp: 1 });
 
   const requests = await DonationRequest.find({ donation: donation._id })
-    .populate('ngo', 'name organizationName organizationType phone email city isVerified')
+    .populate('ngo', 'name organizationName phone email city')
     .sort({ createdAt: -1 });
 
-  return { donation, trackingLogs, requests };
+  return {
+    ...donation.toObject(),
+    trackingLogs,
+    requests,
+  };
 };
 
 const createDonation = async (data, user) => {
-  if (isMemory()) {
-    const id = 'don_' + memoryStore.generateId();
-    const newDonation = {
-      _id: id,
-      id: id,
-      donor: {
-        _id: user._id || user.id,
-        id: user._id || user.id,
-        name: user.name,
-        organizationName: user.organizationName,
-        organizationType: user.organizationType,
-        phone: user.phone,
-        city: user.city,
-      },
-      ...data,
-      status: 'Available',
-      reportsCount: 0,
-      createdAt: new Date(),
-    };
-    memoryStore.donations.unshift(newDonation);
-
-    // Create log
-    const log = {
-      _id: 'log_' + memoryStore.generateId(),
-      donation: id,
-      status: 'Available',
-      updatedBy: user,
-      actorRole: user.role,
-      title: 'Food Donation Listed',
-      note: `Donation created by ${user.organizationName || user.name}. ${data.servings} servings available.`,
-      timestamp: new Date(),
-    };
-    memoryStore.logs.push(log);
-
-    return newDonation;
-  }
-
   const donation = await FoodDonation.create({
     donor: user._id,
     ...data,
-    status: 'Available',
+    status: data.status || 'Available',
   });
 
   await TrackingLog.create({
     donation: donation._id,
-    status: 'Available',
+    previousStatus: '',
+    newStatus: donation.status,
     updatedBy: user._id,
     actorRole: user.role,
     title: 'Food Donation Listed',
@@ -241,23 +126,6 @@ const createDonation = async (data, user) => {
 
 const getMyDonations = async (user) => {
   const userId = user._id || user.id;
-  if (isMemory()) {
-    const myDonations = memoryStore.donations.filter(
-      (d) => (d.donor && (d.donor._id === userId || d.donor.id === userId)) || d.donor === userId
-    );
-
-    return myDonations.map((d) => {
-      const relRequests = memoryStore.requests.filter(
-        (r) => (r.donation && (r.donation._id === d._id || r.donation.id === d._id)) || r.donation === d._id
-      );
-      return {
-        ...d,
-        requestsCount: relRequests.length,
-        pendingRequestsCount: relRequests.filter((r) => r.status === 'Pending').length,
-        requests: relRequests,
-      };
-    });
-  }
 
   const donations = await FoodDonation.find({ donor: userId })
     .populate('assignedNgo', 'name organizationName phone')
@@ -280,49 +148,16 @@ const getMyDonations = async (user) => {
 };
 
 const updateDonation = async (id, updates, user) => {
-  if (isMemory()) {
-    const idx = memoryStore.donations.findIndex((d) => d._id === id || d.id === id);
-    if (idx === -1) return null;
-    const donation = memoryStore.donations[idx];
-
-    // check auth
-    const donorId = donation.donor?._id || donation.donor?.id || donation.donor;
-    const userId = user._id || user.id;
-    if (donorId !== userId && user.role !== 'admin') {
-      throw new Error('Not authorized to modify this donation');
-    }
-
-    if (!['Available', 'Requested'].includes(donation.status)) {
-      throw new Error(`Cannot edit donation once it has reached '${donation.status}' status`);
-    }
-
-    memoryStore.donations[idx] = {
-      ...donation,
-      ...updates,
-      updatedAt: new Date(),
-    };
-
-    memoryStore.logs.push({
-      _id: 'log_' + memoryStore.generateId(),
-      donation: id,
-      status: donation.status,
-      updatedBy: user,
-      actorRole: user.role,
-      title: 'Donation Details Updated',
-      note: 'Donor updated the food description and pickup details.',
-      timestamp: new Date(),
-    });
-
-    return memoryStore.donations[idx];
-  }
-
   const donation = await FoodDonation.findById(id);
-  if (!donation) return null;
+  if (!donation) throw new Error('Donation not found');
+
   if (donation.donor.toString() !== user._id.toString() && user.role !== 'admin') {
-    throw new Error('Not authorized to modify this donation');
+    throw new Error('Not authorized to update this donation');
   }
-  if (!['Available', 'Requested'].includes(donation.status)) {
-    throw new Error(`Cannot edit donation once it has reached '${donation.status}' status`);
+
+  // Only allow updating Available or Draft listings
+  if (!['Available', 'Draft'].includes(donation.status) && user.role !== 'admin') {
+    throw new Error('Cannot edit a donation that has already been accepted or picked up');
   }
 
   Object.assign(donation, updates);
@@ -330,265 +165,165 @@ const updateDonation = async (id, updates, user) => {
 
   await TrackingLog.create({
     donation: donation._id,
-    status: donation.status,
+    previousStatus: donation.status,
+    newStatus: donation.status,
     updatedBy: user._id,
     actorRole: user.role,
     title: 'Donation Details Updated',
-    note: 'Donor updated the food description and pickup details.',
+    note: `Updated listing by donor ${user.organizationName || user.name}.`,
   });
 
   return donation;
 };
 
 const cancelDonation = async (id, reason, user) => {
-  if (isMemory()) {
-    const idx = memoryStore.donations.findIndex((d) => d._id === id || d.id === id);
-    if (idx === -1) return null;
-    const donation = memoryStore.donations[idx];
-    const donorId = donation.donor?._id || donation.donor?.id || donation.donor;
-    const userId = user._id || user.id;
-
-    if (donorId !== userId && user.role !== 'admin') {
-      throw new Error('Not authorized');
-    }
-
-    if (['Delivered', 'Cancelled'].includes(donation.status)) {
-      throw new Error(`Donation is already ${donation.status.toLowerCase()}`);
-    }
-
-    donation.status = 'Cancelled';
-
-    // cancel pending requests
-    memoryStore.requests.forEach((r) => {
-      const reqDonId = r.donation?._id || r.donation?.id || r.donation;
-      if (reqDonId === id && ['Pending', 'Accepted'].includes(r.status)) {
-        r.status = 'Cancelled';
-        r.responseNote = reason;
-      }
-    });
-
-    memoryStore.logs.push({
-      _id: 'log_' + memoryStore.generateId(),
-      donation: id,
-      status: 'Cancelled',
-      updatedBy: user,
-      actorRole: user.role,
-      title: 'Donation Cancelled',
-      note: reason || 'Cancelled by donor',
-      timestamp: new Date(),
-    });
-
-    return donation;
-  }
-
   const donation = await FoodDonation.findById(id);
-  if (!donation) return null;
+  if (!donation) throw new Error('Donation not found');
+
   if (donation.donor.toString() !== user._id.toString() && user.role !== 'admin') {
-    throw new Error('Not authorized');
-  }
-  if (['Delivered', 'Cancelled'].includes(donation.status)) {
-    throw new Error(`Donation is already ${donation.status.toLowerCase()}`);
+    throw new Error('Not authorized to cancel this donation');
   }
 
+  const prevStatus = donation.status;
   donation.status = 'Cancelled';
   await donation.save();
 
+  // Reject all pending requests
   await DonationRequest.updateMany(
-    { donation: donation._id, status: { $in: ['Pending', 'Accepted'] } },
-    { status: 'Cancelled', responseNote: reason }
+    { donation: donation._id, status: 'Pending' },
+    { status: 'Cancelled', responseNote: `Donation cancelled by donor: ${reason || 'No longer available'}` }
   );
 
   await TrackingLog.create({
     donation: donation._id,
-    status: 'Cancelled',
+    previousStatus: prevStatus,
+    newStatus: 'Cancelled',
     updatedBy: user._id,
     actorRole: user.role,
     title: 'Donation Cancelled',
-    note: reason,
+    note: reason || 'Cancelled by donor kitchen.',
   });
 
   return donation;
 };
 
-// Request operations
-const createRequest = async (data, user) => {
-  const userId = user._id || user.id;
-  if (isMemory()) {
-    const donation = memoryStore.donations.find((d) => d._id === data.donationId || d.id === data.donationId);
-    if (!donation) throw new Error('Donation listing not found');
+const reportDonation = async (id, reason, user) => {
+  const donation = await FoodDonation.findById(id);
+  if (!donation) throw new Error('Donation not found');
 
-    if (!['Available', 'Requested'].includes(donation.status)) {
-      throw new Error(`This donation is no longer available (current status: ${donation.status})`);
-    }
+  donation.reportsCount = (donation.reportsCount || 0) + 1;
+  donation.reportReason = reason || 'Safety or hygiene concern reported by community';
+  await donation.save();
 
-    const existing = memoryStore.requests.find((r) => {
-      const donId = r.donation?._id || r.donation?.id || r.donation;
-      const ngoId = r.ngo?._id || r.ngo?.id || r.ngo;
-      return donId === data.donationId && ngoId === userId && ['Pending', 'Accepted'].includes(r.status);
-    });
+  return donation;
+};
 
-    if (existing) {
-      throw new Error('You have already submitted an active request for this donation');
-    }
+const resolveReport = async (id) => {
+  const donation = await FoodDonation.findById(id);
+  if (!donation) throw new Error('Donation not found');
 
-    const reqId = 'req_' + memoryStore.generateId();
-    const newRequest = {
-      _id: reqId,
-      id: reqId,
-      donation: donation,
-      donor: donation.donor,
-      ngo: user,
-      servingsRequested: Number(data.servingsRequested),
-      proposedPickupTime: data.proposedPickupTime,
-      volunteerName: data.volunteerName,
-      volunteerPhone: data.volunteerPhone,
-      vehicleNumber: data.vehicleNumber || 'N/A',
-      message: data.message || '',
-      verificationOtp: Math.floor(1000 + Math.random() * 9000).toString(),
-      status: 'Pending',
-      createdAt: new Date(),
-    };
+  donation.reportsCount = 0;
+  donation.reportReason = '';
+  await donation.save();
 
-    memoryStore.requests.push(newRequest);
+  return donation;
+};
 
-    if (donation.status === 'Available') {
-      donation.status = 'Requested';
-    }
+const deleteDonation = async (id, user) => {
+  const donation = await FoodDonation.findById(id);
+  if (!donation) throw new Error('Donation not found');
 
-    memoryStore.logs.push({
-      _id: 'log_' + memoryStore.generateId(),
-      donation: donation._id,
-      status: 'Requested',
-      updatedBy: user,
-      actorRole: user.role,
-      title: 'Donation Requested',
-      note: `${user.organizationName || user.name} requested ${data.servingsRequested} servings. Pickup: ${data.proposedPickupTime}`,
-      timestamp: new Date(),
-    });
-
-    return newRequest;
+  if (donation.donor.toString() !== user._id.toString() && user.role !== 'admin') {
+    throw new Error('Not authorized to delete this donation');
   }
 
-  const donation = await FoodDonation.findById(data.donationId).populate('donor');
+  await FoodDonation.findByIdAndDelete(id);
+  await DonationRequest.deleteMany({ donation: id });
+  await TrackingLog.deleteMany({ donation: id });
+
+  return { success: true };
+};
+
+// ================= REQUEST OPERATIONS =================
+
+const createRequest = async (data, user) => {
+  const {
+    donationId,
+    servingsRequested,
+    requestedQuantity,
+    pickupTime,
+    proposedPickupTime,
+    volunteerName,
+    volunteerPhone,
+    vehicleNumber,
+    message,
+    beneficiaries,
+  } = data;
+
+  const donation = await FoodDonation.findById(donationId).populate('donor');
   if (!donation) throw new Error('Donation listing not found');
-  if (!['Available', 'Requested'].includes(donation.status)) {
+
+  if (donation.status !== 'Available') {
     throw new Error(`This donation is no longer available (current status: ${donation.status})`);
   }
 
-  const existing = await DonationRequest.findOne({
-    donation: data.donationId,
+  // Prevent duplicate pending requests from same NGO
+  const existingReq = await DonationRequest.findOne({
+    donation: donation._id,
     ngo: user._id,
     status: { $in: ['Pending', 'Accepted'] },
   });
-  if (existing) {
-    throw new Error('You have already submitted an active request for this donation');
+
+  if (existingReq) {
+    throw new Error('You already have an active request for this food donation');
   }
 
+  const requestedAmount = Number(requestedQuantity || servingsRequested) || 1;
+
   const request = await DonationRequest.create({
-    donation: data.donationId,
+    donation: donation._id,
     donor: donation.donor._id,
     ngo: user._id,
-    servingsRequested: Number(data.servingsRequested),
-    proposedPickupTime: data.proposedPickupTime,
-    volunteerName: data.volunteerName,
-    volunteerPhone: data.volunteerPhone,
-    vehicleNumber: data.vehicleNumber || 'N/A',
-    message: data.message || '',
+    requestedQuantity: requestedAmount,
+    servingsRequested: requestedAmount,
+    beneficiaries: Number(beneficiaries) || requestedAmount,
+    pickupTime: pickupTime || proposedPickupTime,
+    proposedPickupTime: pickupTime || proposedPickupTime,
+    volunteerName,
+    volunteerPhone,
+    vehicleNumber: vehicleNumber || '',
+    message: message || '',
     status: 'Pending',
   });
 
-  if (donation.status === 'Available') {
-    donation.status = 'Requested';
-    await donation.save();
-  }
-
+  // Log in tracking
   await TrackingLog.create({
     donation: donation._id,
-    status: 'Requested',
+    previousStatus: donation.status,
+    newStatus: 'Requested',
     updatedBy: user._id,
     actorRole: user.role,
-    title: 'Donation Requested',
-    note: `${user.organizationName || user.name} requested ${data.servingsRequested} servings. Pickup: ${data.proposedPickupTime}`,
+    title: 'NGO Request Submitted',
+    note: `${user.organizationName || user.name} requested ${requestedAmount} servings for ${beneficiaries || requestedAmount} beneficiaries.`,
   });
+
+  // Create in-app notification for donor
+  try {
+    await Notification.create({
+      userId: donation.donor._id,
+      title: 'New Food Donation Request',
+      message: `${user.organizationName || user.name} requested ${requestedAmount} servings of "${donation.foodName}".`,
+      type: 'request_received',
+      link: '/donor/dashboard',
+    });
+  } catch (err) {
+    console.warn('[Notification Error]', err.message);
+  }
 
   return request;
 };
 
 const respondToRequest = async (requestId, action, responseNote, user) => {
-  const userId = user._id || user.id;
-
-  if (isMemory()) {
-    const request = memoryStore.requests.find((r) => r._id === requestId || r.id === requestId);
-    if (!request) throw new Error('Request not found');
-
-    const donorId = request.donor?._id || request.donor?.id || request.donor;
-    if (donorId !== userId && user.role !== 'admin') {
-      throw new Error('Not authorized to respond to this request');
-    }
-
-    if (request.status !== 'Pending') {
-      throw new Error(`This request is already ${request.status.toLowerCase()}`);
-    }
-
-    const donId = request.donation?._id || request.donation?.id || request.donation;
-    const donation = memoryStore.donations.find((d) => d._id === donId || d.id === donId);
-
-    if (action === 'accept') {
-      request.status = 'Accepted';
-      request.responseNote = responseNote || 'Accepted by donor. Please arrive on time.';
-      donation.status = 'Accepted';
-      donation.assignedNgo = request.ngo;
-      donation.acceptedRequest = request;
-
-      // Reject others
-      memoryStore.requests.forEach((r) => {
-        const rDonId = r.donation?._id || r.donation?.id || r.donation;
-        if (rDonId === donId && r._id !== requestId && r.status === 'Pending') {
-          r.status = 'Rejected';
-          r.responseNote = 'Another organization was matched for this batch.';
-        }
-      });
-
-      memoryStore.logs.push({
-        _id: 'log_' + memoryStore.generateId(),
-        donation: donation._id,
-        status: 'Accepted',
-        updatedBy: user,
-        actorRole: user.role,
-        title: 'Request Accepted',
-        note: `Approved request for ${request.ngo?.organizationName || request.ngo?.name}. PIN: ${request.verificationOtp}`,
-        timestamp: new Date(),
-      });
-
-      return request;
-    } else {
-      request.status = 'Rejected';
-      request.responseNote = responseNote || 'Declined by donor';
-
-      const remainingPending = memoryStore.requests.filter((r) => {
-        const rDonId = r.donation?._id || r.donation?.id || r.donation;
-        return rDonId === donId && r.status === 'Pending';
-      });
-
-      if (remainingPending.length === 0) {
-        donation.status = 'Available';
-      }
-
-      memoryStore.logs.push({
-        _id: 'log_' + memoryStore.generateId(),
-        donation: donation._id,
-        status: donation.status,
-        updatedBy: user,
-        actorRole: user.role,
-        title: 'Request Declined',
-        note: `Donor declined request from ${request.ngo?.organizationName || request.ngo?.name}.`,
-        timestamp: new Date(),
-      });
-
-      return request;
-    }
-  }
-
   const request = await DonationRequest.findById(requestId)
     .populate('donation')
     .populate('ngo', 'name organizationName phone email')
@@ -606,7 +341,7 @@ const respondToRequest = async (requestId, action, responseNote, user) => {
 
   if (action === 'accept') {
     request.status = 'Accepted';
-    request.responseNote = responseNote || 'Accepted by donor. Please arrive on time.';
+    request.responseNote = responseNote || 'Accepted by donor kitchen. Please arrive on time.';
     await request.save();
 
     donation.status = 'Accepted';
@@ -614,6 +349,7 @@ const respondToRequest = async (requestId, action, responseNote, user) => {
     donation.acceptedRequest = request._id;
     await donation.save();
 
+    // Auto reject other pending requests
     await DonationRequest.updateMany(
       { donation: donation._id, _id: { $ne: request._id }, status: 'Pending' },
       { status: 'Rejected', responseNote: 'Another organization was matched for this batch.' }
@@ -621,12 +357,26 @@ const respondToRequest = async (requestId, action, responseNote, user) => {
 
     await TrackingLog.create({
       donation: donation._id,
-      status: 'Accepted',
+      previousStatus: 'Requested',
+      newStatus: 'Accepted',
       updatedBy: user._id,
       actorRole: user.role,
-      title: 'Request Accepted',
-      note: `Approved request for ${request.ngo.organizationName || request.ngo.name}. PIN: ${request.verificationOtp}`,
+      title: 'Donation Accepted',
+      note: `Approved request for ${request.ngo.organizationName || request.ngo.name}. Verification OTP: ${request.verificationOtp}`,
     });
+
+    // Notify NGO
+    try {
+      await Notification.create({
+        userId: request.ngo._id,
+        title: 'Food Request Accepted!',
+        message: `Your request for "${donation.foodName}" was accepted by ${user.organizationName || user.name}. Verification OTP: ${request.verificationOtp}`,
+        type: 'request_accepted',
+        link: '/ngo/dashboard',
+      });
+    } catch (err) {
+      console.warn('[Notification Error]', err.message);
+    }
 
     return request;
   } else {
@@ -642,12 +392,26 @@ const respondToRequest = async (requestId, action, responseNote, user) => {
 
     await TrackingLog.create({
       donation: donation._id,
-      status: donation.status,
+      previousStatus: donation.status,
+      newStatus: donation.status,
       updatedBy: user._id,
       actorRole: user.role,
       title: 'Request Declined',
       note: `Donor declined request from ${request.ngo.organizationName || request.ngo.name}.`,
     });
+
+    // Notify NGO
+    try {
+      await Notification.create({
+        userId: request.ngo._id,
+        title: 'Food Request Declined',
+        message: `Your request for "${donation.foodName}" was declined by ${user.organizationName || user.name}.`,
+        type: 'request_rejected',
+        link: '/ngo/dashboard',
+      });
+    } catch (err) {
+      console.warn('[Notification Error]', err.message);
+    }
 
     return request;
   }
@@ -656,103 +420,66 @@ const respondToRequest = async (requestId, action, responseNote, user) => {
 const updateLifecycleStatus = async (requestId, status, note, otp, user) => {
   const userId = user._id || user.id;
 
-  if (isMemory()) {
-    const request = memoryStore.requests.find((r) => r._id === requestId || r.id === requestId);
-    if (!request) throw new Error('Request not found');
-
-    const donId = request.donation?._id || request.donation?.id || request.donation;
-    const donation = memoryStore.donations.find((d) => d._id === donId || d.id === donId);
-
-    if (status === 'Picked Up') {
-      if (request.status !== 'Accepted') {
-        throw new Error('Can only mark Picked Up after donation is Accepted');
-      }
-      if (otp && otp.trim() !== request.verificationOtp) {
-        throw new Error('Invalid verification OTP provided');
-      }
-
-      request.status = 'Picked Up';
-      request.pickedUpAt = new Date();
-      donation.status = 'Picked Up';
-
-      memoryStore.logs.push({
-        _id: 'log_' + memoryStore.generateId(),
-        donation: donation._id,
-        status: 'Picked Up',
-        updatedBy: user,
-        actorRole: user.role,
-        title: 'Food Picked Up',
-        note: note || `Volunteer ${request.volunteerName} collected food. In transit.`,
-        timestamp: new Date(),
-      });
-
-      return request;
-    }
-
-    if (status === 'Delivered') {
-      if (request.status !== 'Picked Up') {
-        throw new Error('Can only mark Delivered after food is Picked Up');
-      }
-
-      request.status = 'Delivered';
-      request.deliveredAt = new Date();
-      donation.status = 'Delivered';
-
-      memoryStore.logs.push({
-        _id: 'log_' + memoryStore.generateId(),
-        donation: donation._id,
-        status: 'Delivered',
-        updatedBy: user,
-        actorRole: user.role,
-        title: 'Meals Successfully Delivered',
-        note: note || `All ${donation.servings} meals reached beneficiaries safely via ${request.ngo?.organizationName || request.ngo?.name}.`,
-        timestamp: new Date(),
-      });
-
-      return request;
-    }
-
-    if (status === 'Cancelled') {
-      request.status = 'Cancelled';
-      request.responseNote = note || 'Cancelled';
-      if (donation.acceptedRequest && (donation.acceptedRequest._id === requestId || donation.acceptedRequest.id === requestId)) {
-        donation.status = 'Available';
-        donation.assignedNgo = null;
-        donation.acceptedRequest = null;
-      }
-      memoryStore.logs.push({
-        _id: 'log_' + memoryStore.generateId(),
-        donation: donation._id,
-        status: 'Cancelled',
-        updatedBy: user,
-        actorRole: user.role,
-        title: 'Request Cancelled',
-        note: note || 'Cancelled',
-        timestamp: new Date(),
-      });
-      return request;
-    }
-  }
-
   const request = await DonationRequest.findById(requestId)
     .populate('donation')
-    .populate('ngo', 'name organizationName')
-    .populate('donor', 'name organizationName');
+    .populate('ngo', 'name organizationName phone email')
+    .populate('donor', 'name organizationName phone email');
 
   if (!request) throw new Error('Request not found');
 
+  const isNgo = request.ngo._id.toString() === userId.toString();
+  const isDonor = request.donor._id.toString() === userId.toString();
+  const isAdmin = user.role === 'admin';
+
+  if (!isNgo && !isDonor && !isAdmin) {
+    throw new Error('Not authorized to update status of this request');
+  }
+
   const donation = await FoodDonation.findById(request.donation._id);
 
-  if (status === 'Picked Up') {
-    if (request.status !== 'Accepted') {
-      throw new Error('Can only mark Picked Up after donation is Accepted');
+  if (status === 'Ready for Pickup') {
+    if (!isDonor && !isAdmin) throw new Error('Only the donor can mark food as Ready for Pickup');
+    request.status = 'Ready for Pickup';
+    await request.save();
+
+    donation.status = 'Ready for Pickup';
+    await donation.save();
+
+    await TrackingLog.create({
+      donation: donation._id,
+      previousStatus: 'Accepted',
+      newStatus: 'Ready for Pickup',
+      updatedBy: user._id,
+      actorRole: user.role,
+      title: 'Food Ready for Pickup',
+      note: note || 'Food is packaged and ready at the donor venue.',
+    });
+
+    try {
+      await Notification.create({
+        userId: request.ngo._id,
+        title: 'Food Ready for Pickup!',
+        message: `"${donation.foodName}" is packed and ready for pickup at ${donation.pickupAddress}.`,
+        type: 'pickup_ready',
+        link: '/ngo/dashboard',
+      });
+    } catch (err) {
+      console.warn('[Notification Error]', err.message);
     }
+
+    return request;
+  }
+
+  if (status === 'Picked Up') {
+    if (!['Accepted', 'Ready for Pickup'].includes(request.status)) {
+      throw new Error('Can only mark Picked Up after donation is Accepted or Ready for Pickup');
+    }
+
     if (otp && otp.trim() !== request.verificationOtp) {
-      throw new Error('Invalid verification OTP provided');
+      throw new Error('Invalid 4-digit verification OTP. Please verify with the donor.');
     }
 
     request.status = 'Picked Up';
-    request.pickedUpAt = new Date();
     await request.save();
 
     donation.status = 'Picked Up';
@@ -760,23 +487,35 @@ const updateLifecycleStatus = async (requestId, status, note, otp, user) => {
 
     await TrackingLog.create({
       donation: donation._id,
-      status: 'Picked Up',
+      previousStatus: donation.status,
+      newStatus: 'Picked Up',
       updatedBy: user._id,
       actorRole: user.role,
-      title: 'Food Picked Up',
-      note: note || `Volunteer ${request.volunteerName} collected food. In transit.`,
+      title: 'Food Collected by Volunteer',
+      note: note || `Volunteer ${request.volunteerName} collected food. In transit to shelter.`,
     });
+
+    try {
+      await Notification.create({
+        userId: request.donor._id,
+        title: 'Food Picked Up',
+        message: `${request.ngo.organizationName || request.ngo.name} volunteer ${request.volunteerName} collected "${donation.foodName}".`,
+        type: 'pickup_ready',
+        link: '/donor/dashboard',
+      });
+    } catch (err) {
+      console.warn('[Notification Error]', err.message);
+    }
 
     return request;
   }
 
-  if (status === 'Delivered') {
-    if (request.status !== 'Picked Up') {
-      throw new Error('Can only mark Delivered after food is Picked Up');
+  if (status === 'Delivered' || status === 'Completed') {
+    if (request.status !== 'Picked Up' && !isAdmin) {
+      throw new Error('Can only complete delivery after food is Picked Up');
     }
 
     request.status = 'Delivered';
-    request.deliveredAt = new Date();
     await request.save();
 
     donation.status = 'Delivered';
@@ -784,12 +523,33 @@ const updateLifecycleStatus = async (requestId, status, note, otp, user) => {
 
     await TrackingLog.create({
       donation: donation._id,
-      status: 'Delivered',
+      previousStatus: 'Picked Up',
+      newStatus: 'Completed',
       updatedBy: user._id,
       actorRole: user.role,
-      title: 'Meals Successfully Delivered',
-      note: note || `All ${donation.servings} meals reached beneficiaries safely via ${request.ngo.organizationName || request.ngo.name}.`,
+      title: 'Meals Delivered & Distributed',
+      note: note || `Surplus food safely served to ${request.beneficiaries || request.servingsRequested} beneficiaries.`,
     });
+
+    try {
+      await Notification.create({
+        userId: request.donor._id,
+        title: 'Donation Completed & Impact Recorded!',
+        message: `Your donation of "${donation.foodName}" was safely distributed to people in need. Thank you!`,
+        type: 'donation_completed',
+        link: '/donor/dashboard',
+      });
+
+      await Notification.create({
+        userId: request.ngo._id,
+        title: 'Donation Completed',
+        message: `Distribution of "${donation.foodName}" successfully logged.`,
+        type: 'donation_completed',
+        link: '/ngo/dashboard',
+      });
+    } catch (err) {
+      console.warn('[Notification Error]', err.message);
+    }
 
     return request;
   }
@@ -799,114 +559,53 @@ const updateLifecycleStatus = async (requestId, status, note, otp, user) => {
     request.responseNote = note || 'Cancelled';
     await request.save();
 
-    if (donation.acceptedRequest && donation.acceptedRequest.toString() === request._id.toString()) {
-      donation.status = 'Available';
-      donation.assignedNgo = null;
-      donation.acceptedRequest = null;
-      await donation.save();
-    }
+    const pendingCount = await DonationRequest.countDocuments({ donation: donation._id, status: 'Pending' });
+    donation.status = pendingCount > 0 ? 'Requested' : 'Available';
+    donation.assignedNgo = null;
+    donation.acceptedRequest = null;
+    await donation.save();
 
     await TrackingLog.create({
       donation: donation._id,
-      status: 'Cancelled',
+      previousStatus: 'Accepted',
+      newStatus: donation.status,
       updatedBy: user._id,
       actorRole: user.role,
       title: 'Request Cancelled',
-      note: note || 'Cancelled',
+      note: note || 'Request was cancelled.',
     });
 
     return request;
   }
+
+  throw new Error(`Unsupported lifecycle status: ${status}`);
 };
 
 const getMyRequests = async (user) => {
   const userId = user._id || user.id;
 
-  if (isMemory()) {
-    const list = memoryStore.requests.filter((r) => {
-      const ngoId = r.ngo?._id || r.ngo?.id || r.ngo;
-      return ngoId === userId;
-    });
-
-    return list.map((r) => {
-      const donId = r.donation?._id || r.donation?.id || r.donation;
-      const don = memoryStore.donations.find((d) => d._id === donId || d.id === donId);
-      return {
-        ...r,
-        donation: don || r.donation,
-      };
-    });
-  }
-
-  return await DonationRequest.find({ ngo: user._id })
+  return await DonationRequest.find({ ngo: userId })
     .populate({
       path: 'donation',
-      populate: { path: 'donor', select: 'name organizationName phone email city address' },
+      populate: { path: 'donor', select: 'name organizationName phone email address city' },
     })
+    .populate('donor', 'name organizationName phone email city')
     .sort({ createdAt: -1 });
 };
 
-// Platform stats
+// ================= PLATFORM STATS =================
+
 const getPlatformStats = async () => {
-  if (isMemory()) {
-    const totalDonors = memoryStore.users.filter((u) => u.role === 'donor').length;
-    const totalNgos = memoryStore.users.filter((u) => u.role === 'ngo').length;
-    const totalDonations = memoryStore.donations.length;
-    const availableDonations = memoryStore.donations.filter((d) => d.status === 'Available').length;
-    const inProgressDonations = memoryStore.donations.filter((d) =>
-      ['Requested', 'Accepted', 'Picked Up'].includes(d.status)
-    ).length;
-    const deliveredDonations = memoryStore.donations.filter((d) => d.status === 'Delivered').length;
-
-    const estimatedMealsOffered = memoryStore.donations.reduce((sum, d) => sum + (Number(d.servings) || 0), 0);
-    const verifiedMealsDelivered = memoryStore.donations
-      .filter((d) => d.status === 'Delivered')
-      .reduce((sum, d) => sum + (Number(d.servings) || 0), 0);
-
-    const estimatedKgFoodSaved = Math.round(verifiedMealsDelivered * 0.4);
-    const estimatedCo2SavedKg = Math.round(estimatedKgFoodSaved * 1.9);
-
-    const catMap = {};
-    memoryStore.donations.forEach((d) => {
-      const cat = d.category || 'Other';
-      if (!catMap[cat]) catMap[cat] = { count: 0, servings: 0 };
-      catMap[cat].count += 1;
-      catMap[cat].servings += Number(d.servings) || 0;
-    });
-
-    const categoryBreakdown = Object.keys(catMap).map((cat) => ({
-      category: cat,
-      donationsCount: catMap[cat].count,
-      totalServings: catMap[cat].servings,
-    }));
-
-    return {
-      verified: {
-        totalDonations,
-        availableDonations,
-        inProgressDonations,
-        deliveredDonations,
-        verifiedMealsDelivered,
-        participatingDonors: totalDonors,
-        participatingNgos: totalNgos,
-      },
-      estimates: {
-        estimatedMealsOffered,
-        estimatedKgFoodSaved,
-        estimatedCo2SavedKg,
-      },
-      categoryBreakdown,
-    };
-  }
-
   const totalDonors = await User.countDocuments({ role: 'donor' });
   const totalNgos = await User.countDocuments({ role: 'ngo' });
   const totalDonations = await FoodDonation.countDocuments();
   const availableDonations = await FoodDonation.countDocuments({ status: 'Available' });
   const inProgressDonations = await FoodDonation.countDocuments({
-    status: { $in: ['Requested', 'Accepted', 'Picked Up'] },
+    status: { $in: ['Requested', 'Accepted', 'Ready for Pickup', 'Picked Up'] },
   });
-  const deliveredDonations = await FoodDonation.countDocuments({ status: 'Delivered' });
+  const deliveredDonations = await FoodDonation.countDocuments({
+    status: { $in: ['Delivered', 'Completed'] },
+  });
 
   const mealsOfferedAgg = await FoodDonation.aggregate([
     { $group: { _id: null, totalServings: { $sum: '$servings' } } },
@@ -914,7 +613,7 @@ const getPlatformStats = async () => {
   const estimatedMealsOffered = mealsOfferedAgg[0]?.totalServings || 0;
 
   const mealsDeliveredAgg = await FoodDonation.aggregate([
-    { $match: { status: 'Delivered' } },
+    { $match: { status: { $in: ['Delivered', 'Completed'] } } },
     { $group: { _id: null, totalServings: { $sum: '$servings' } } },
   ]);
   const verifiedMealsDelivered = mealsDeliveredAgg[0]?.totalServings || 0;
@@ -927,26 +626,30 @@ const getPlatformStats = async () => {
     { $sort: { count: -1 } },
   ]);
 
+  const categoryBreakdown = categoryStats.map((c) => ({
+    category: c._id || 'Other',
+    count: c.count,
+    servings: c.servings,
+  }));
+
   return {
     verified: {
-      totalDonations,
-      availableDonations,
-      inProgressDonations,
-      deliveredDonations,
       verifiedMealsDelivered,
+      totalDonations,
       participatingDonors: totalDonors,
       participatingNgos: totalNgos,
+      deliveredDonations,
+    },
+    operational: {
+      availableDonations,
+      inProgressDonations,
     },
     estimates: {
       estimatedMealsOffered,
       estimatedKgFoodSaved,
       estimatedCo2SavedKg,
     },
-    categoryBreakdown: categoryStats.map((c) => ({
-      category: c._id || 'Other',
-      donationsCount: c.count,
-      totalServings: c.servings,
-    })),
+    categories: categoryBreakdown,
   };
 };
 
@@ -962,6 +665,9 @@ module.exports = {
   getMyDonations,
   updateDonation,
   cancelDonation,
+  reportDonation,
+  resolveReport,
+  deleteDonation,
   createRequest,
   respondToRequest,
   updateLifecycleStatus,

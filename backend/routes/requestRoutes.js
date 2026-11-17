@@ -9,7 +9,9 @@ const {
 const { protect } = require('../middleware/authMiddleware');
 const { authorize } = require('../middleware/roleMiddleware');
 
+router.get('/my', protect, authorize('ngo', 'admin'), getMyRequests);
 router.get('/my-requests', protect, authorize('ngo', 'admin'), getMyRequests);
+
 router.post('/', protect, authorize('ngo', 'admin'), createRequest);
 router.put('/:id/respond', protect, authorize('donor', 'admin'), respondToRequest);
 router.put('/:id/status', protect, updateLifecycleStatus);

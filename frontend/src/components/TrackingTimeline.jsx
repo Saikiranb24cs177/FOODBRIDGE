@@ -2,11 +2,12 @@ import React from 'react';
 import { CheckCircle2, Clock, Truck, Heart, AlertTriangle, ShieldCheck } from 'lucide-react';
 
 const STEPS = [
-  { key: 'Available', label: '1. Available', icon: ShieldCheck, desc: 'Donation listed' },
-  { key: 'Requested', label: '2. Requested', icon: Clock, desc: 'NGO request placed' },
-  { key: 'Accepted', label: '3. Accepted', icon: Heart, desc: 'Matched & OTP issued' },
-  { key: 'Picked Up', label: '4. In Transit', icon: Truck, desc: 'Volunteer collected' },
-  { key: 'Delivered', label: '5. Delivered', icon: CheckCircle2, desc: 'Meals served' },
+  { key: 'Available', label: '1. Donation Listed', icon: ShieldCheck, desc: 'Donation listed' },
+  { key: 'Requested', label: '2. NGO Request Received', icon: Clock, desc: 'NGO request placed' },
+  { key: 'Accepted', label: '3. Donation Accepted', icon: Heart, desc: 'Matched & OTP issued' },
+  { key: 'Ready for Pickup', label: '4. Pickup Scheduled', icon: Clock, desc: 'Window coordinated' },
+  { key: 'Picked Up', label: '5. Food Collected', icon: Truck, desc: 'Volunteer collected' },
+  { key: 'Delivered', label: '6. Donation Completed', icon: CheckCircle2, desc: 'Meals distributed' },
 ];
 
 const TrackingTimeline = ({ currentStatus, trackingLogs = [], verificationOtp = null }) => {
@@ -21,10 +22,13 @@ const TrackingTimeline = ({ currentStatus, trackingLogs = [], verificationOtp = 
         return 1;
       case 'Accepted':
         return 2;
-      case 'Picked Up':
+      case 'Ready for Pickup':
         return 3;
-      case 'Delivered':
+      case 'Picked Up':
         return 4;
+      case 'Delivered':
+      case 'Completed':
+        return 5;
       default:
         return 0;
     }
@@ -72,7 +76,7 @@ const TrackingTimeline = ({ currentStatus, trackingLogs = [], verificationOtp = 
             }}
           />
 
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 relative z-10">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 relative z-10">
             {STEPS.map((step, idx) => {
               const Icon = step.icon;
               const isDone = idx < currentIndex;

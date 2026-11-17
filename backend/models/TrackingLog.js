@@ -6,11 +6,21 @@ const trackingLogSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'FoodDonation',
       required: true,
+      index: true,
+    },
+    previousStatus: {
+      type: String,
+      default: '',
+    },
+    newStatus: {
+      type: String,
+      required: true,
     },
     status: {
       type: String,
-      enum: ['Available', 'Requested', 'Accepted', 'Picked Up', 'Delivered', 'Cancelled'],
-      required: true,
+      default: function () {
+        return this.newStatus;
+      },
     },
     updatedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -33,11 +43,14 @@ const trackingLogSchema = new mongoose.Schema(
     timestamp: {
       type: Date,
       default: Date.now,
-    }
+    },
   },
   {
     timestamps: true,
   }
 );
 
-module.exports = mongoose.model('TrackingLog', trackingLogSchema);
+trackingLogSchema.set('toJSON', { virtuals: true });
+
+const TrackingLog = mongoose.model('TrackingLog', trackingLogSchema);
+module.exports = TrackingLog;

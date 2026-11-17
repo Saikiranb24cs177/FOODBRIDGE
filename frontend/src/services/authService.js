@@ -35,6 +35,16 @@ export const authService = {
     return response.data;
   },
 
+  forgotPassword: async (email) => {
+    const response = await api.post('/auth/forgot-password', { email });
+    return response.data;
+  },
+
+  resetPassword: async ({ email, resetToken, newPassword }) => {
+    const response = await api.post('/auth/reset-password', { email, resetToken, newPassword });
+    return response.data;
+  },
+
   logout: () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');

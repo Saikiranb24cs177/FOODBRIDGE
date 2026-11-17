@@ -17,14 +17,35 @@ const donationRequestSchema = new mongoose.Schema(
       ref: 'User',
       required: true,
     },
+    requestedQuantity: {
+      type: Number,
+      required: [true, 'Please specify requested quantity'],
+      min: 1,
+    },
     servingsRequested: {
       type: Number,
-      required: [true, 'Please specify requested servings'],
+      default: function () {
+        return this.requestedQuantity || 1;
+      },
+    },
+    quantityUnit: {
+      type: String,
+      default: 'meals',
+    },
+    beneficiaries: {
+      type: Number,
+      default: 40,
       min: 1,
+    },
+    pickupTime: {
+      type: String,
+      required: [true, 'Please provide estimated pickup time'],
     },
     proposedPickupTime: {
       type: String,
-      required: [true, 'Please provide estimated pickup time'],
+      default: function () {
+        return this.pickupTime;
+      },
     },
     volunteerName: {
       type: String,
@@ -52,26 +73,31 @@ const donationRequestSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ['Pending', 'Accepted', 'Rejected', 'Picked Up', 'Delivered', 'Cancelled'],
+      enum: [
+        'Pending',
+        'Accepted',
+        'Rejected',
+        'Ready for Pickup',
+        'Picked Up',
+        'Delivered',
+        'Completed',
+        'Cancelled',
+      ],
       default: 'Pending',
     },
     responseNote: {
       type: String,
       default: '',
     },
-    pickedUpAt: {
-      type: Date,
-      default: null,
-    },
-    deliveredAt: {
-      type: Date,
-      default: null,
-    }
   },
   {
     timestamps: true,
   }
 );
+
+donationRequestSchema.index({ donation: 1, ngo: 1 });
+donationRequestSchema.index({ donor: 1, status: 1 });
+donationRequestSchema.index({ ngo: 1, status: 1 });
 
 donationRequestSchema.set('toJSON', { virtuals: true });
 

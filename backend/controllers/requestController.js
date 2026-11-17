@@ -8,21 +8,41 @@ const createRequest = async (req, res, next) => {
     const {
       donationId,
       servingsRequested,
+      requestedQuantity,
       proposedPickupTime,
+      pickupTime,
       volunteerName,
       volunteerPhone,
       vehicleNumber,
       message,
+      beneficiaries,
     } = req.body;
 
-    if (!donationId || !servingsRequested || !proposedPickupTime || !volunteerName || !volunteerPhone) {
+    const requestedAmount = requestedQuantity || servingsRequested;
+    const time = pickupTime || proposedPickupTime;
+
+    if (!donationId || !requestedAmount || !time || !volunteerName || !volunteerPhone) {
       return res.status(400).json({
         success: false,
         message: 'Please provide all required fields including volunteer contact details and proposed pickup time',
       });
     }
 
-    const request = await dataService.createRequest(req.body, req.user);
+    const request = await dataService.createRequest(
+      {
+        donationId,
+        requestedQuantity: Number(requestedAmount),
+        servingsRequested: Number(requestedAmount),
+        pickupTime: time,
+        proposedPickupTime: time,
+        volunteerName,
+        volunteerPhone,
+        vehicleNumber,
+        message,
+        beneficiaries: Number(beneficiaries) || Number(requestedAmount),
+      },
+      req.user
+    );
 
     res.status(201).json({
       success: true,
@@ -57,17 +77,18 @@ const respondToRequest = async (req, res, next) => {
   }
 };
 
-// @desc    Update delivery lifecycle: 'Picked Up' or 'Delivered'
+// @desc    Update delivery lifecycle: 'Ready for Pickup', 'Picked Up', 'Delivered', 'Completed', 'Cancelled'
 // @route   PUT /api/requests/:id/status
 // @access  Private (NGO, Donor, Admin)
 const updateLifecycleStatus = async (req, res, next) => {
   try {
-    const { status, note, otp } = req.body; // status: 'Picked Up' | 'Delivered' | 'Cancelled'
+    const { status, note, otp } = req.body;
 
-    if (!['Picked Up', 'Delivered', 'Cancelled'].includes(status)) {
+    const allowed = ['Ready for Pickup', 'Picked Up', 'Delivered', 'Completed', 'Cancelled'];
+    if (!allowed.includes(status)) {
       return res.status(400).json({
         success: false,
-        message: 'Invalid status update. Allowed: Picked Up, Delivered, Cancelled',
+        message: `Invalid status update. Allowed: ${allowed.join(', ')}`,
       });
     }
 
@@ -84,7 +105,7 @@ const updateLifecycleStatus = async (req, res, next) => {
 };
 
 // @desc    Get all requests made by the logged-in NGO
-// @route   GET /api/requests/my-requests
+// @route   GET /api/requests/my or GET /api/requests/my-requests
 // @access  Private (NGO, Admin)
 const getMyRequests = async (req, res, next) => {
   try {

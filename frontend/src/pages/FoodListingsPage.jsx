@@ -17,11 +17,13 @@ import { useToast } from '../context/ToastContext';
 
 const CATEGORIES = [
   'All',
-  'Cooked Meals',
-  'Bakery & Snacks',
-  'Raw Groceries',
-  'Fruits & Vegetables',
+  'Cooked meals',
+  'Packaged food',
+  'Raw ingredients / Vegetables',
+  'Bakery items',
   'Beverages',
+  'Dairy products',
+  'Other',
 ];
 
 const DIETARY_TYPES = ['All', 'Vegetarian', 'Non-Vegetarian', 'Vegan'];
